@@ -9,30 +9,49 @@ hp=os.path.abspath('__file__')
 hp=hp.replace("\\","/")
 hp=hp.replace('__file__','')
 hp=hp+'PanoramaVideo/'
+#set2: frame_75361-frame_75491
+beginframe=40*60*24+40*24
+endframe=beginframe+20*24
 
-endframe=52*60*24+28*24;
-beginframe=52*60*24+22*24-100;
-#extract_frames('video.mp4', beginframe,endframe)
 
-    #play_frames_kp('video.mp4',74942,80000,20000,0.25)
 
+set=2
+#extract_frames('video.mp4', beginframe,endframe,set)
+
+#play_frames_kp('video.mp4',74942,80000,20000,0.25)
+
+draw=True   
+save=True
+overlay=False   
+
+
+files=os.listdir('frames'+str(set))
+
+if overlay:
+    ima=cv2.imread('overlay'+str(set)+'.jpg')
+    scale = 1
+    dim=ima.shape
+    width=dim[1];
+    height=dim[0];
+    ima=cv2.resize(ima,(int(scale*width),int(scale*height)))
+    scale=0.15
+    
+else:
+    ima=cv2.imread('frames'+str(set)+'/'+files[0])
+
+    scale=0.15
+    dim=ima.shape
+    width=dim[1];
+    height=dim[0];
+    ima=cv2.resize(ima,(int(scale*width),int(scale*height)))
    
 
+for it in range(1,len(files)):
+    
 
-files=os.listdir('frames2')
-ima=cv2.imread('frames2/'+files[0])
-scale = 0.1
-dim=ima.shape
-width=dim[1];
-height=dim[0];
-draw=False 
-
-ima=cv2.resize(ima,(int(scale*width),int(scale*height)))
-for it in range(1,len(files)-1):
-   
-
-    imb=cv2.imread('frames2/'+files[it])
-
+    imb=cv2.imread('frames'+str(set)+'/'+files[it])
+    width=imb.shape[1];
+    height=imb.shape[0];
     print(files[it])
 
     ima=cv2.cvtColor(ima,cv2.COLOR_RGB2RGBA)
@@ -45,7 +64,7 @@ for it in range(1,len(files)-1):
     ima_gray=cv2.cvtColor(ima,cv2.COLOR_BGR2GRAY);
     imb_gray=cv2.cvtColor(imb,cv2.COLOR_BGR2GRAY);
 
-
+ 
     detector = cv2.xfeatures2d_SIFT.create()
     matcher = cv2.BFMatcher()
 
@@ -79,7 +98,24 @@ for it in range(1,len(files)-1):
     M, mask = cv2.findHomography(dst_pts,src_pts, cv2.RANSAC,5.0)
 
     M2, mask2 = cv2.findHomography(src_pts,dst_pts, cv2.RANSAC,5.0)
-    #Mi=np.linalg.inv(M);
+
+    # find required translation to avoid falling out of frame
+    uleft_corner=np.matmul(M,[[0],[0],[1]])
+    uright_corner=np.matmul(M,[[imb.shape[1]],[0],[1]])
+    lleft_corner=np.matmul(M,[[0],[imb.shape[0]],[1]]) #note that M must be multiplied with [x,y,z] in that order 
+    lright_corner=np.matmul(M,[[imb.shape[1]],[imb.shape[0]],[1]]) 
+    transx=-min(uleft_corner[0],uright_corner[0],lleft_corner[0],lright_corner[0])[0]
+    transy=-min(uleft_corner[1],uright_corner[1],lleft_corner[1],lright_corner[1])[0]
+
+    transx=int(transx)
+    transy=int(transy)
+    d=2
+    if transx<0. or overlay:
+        transx=0;
+    if transy<0. or overlay:
+        transy=0;
+    M[0,2]+=transx #add translation values to translation terms of homography matrix 
+    M[1,2]+=transy 
 
     h,w,z = ima.shape
     pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
@@ -129,21 +165,41 @@ for it in range(1,len(files)-1):
     #yold=np.asarray(yold,int)[0]
 
     #dst[ynew,xnew,:]=imb[yold,xold,:]
+    
+    maxx=int(max(uright_corner[0,0],lright_corner[0,0],ima.shape[1])+transx)
+    maxy=int(max(lleft_corner[1,0],lright_corner[1,0],ima.shape[0])+transy)
 
-    dst_b = cv2.warpPerspective(imb,M,(ima.shape[1] + imb.shape[1], ima.shape[0]+imb.shape[1]))
+    dst_b = cv2.warpPerspective(imb,M,(maxx, maxy))
     dst_a=np.zeros(dst_b.shape,dtype=dst_b.dtype)
-    dst_a[0:ima.shape[0],0:ima.shape[1]]=ima;
-    mask_a=dst_a[:,:,3];
-    mask_b=dst_b[:,:,3];
-    mask_a=mask_a-mask_b;
-    dst_a[:,:,3]=mask_a;
+    dst_a[transy+0:transy+ima.shape[0],transx+0:transx+ima.shape[1]]=ima;
+  
+    mask_a=np.asarray(dst_a[:,:,3],np.float);
+    
+    mask_b=np.asarray(dst_b[:,:,3],np.float);
 
+   
+    
+    mask_a_n=mask_a-mask_b;
+    mask_a_n[mask_a_n<0]=0;
+    mask_a_n=np.asarray(mask_a_n,dtype=np.uint8)
+    dst_a[:,:,3]=mask_a_n;
 
-    dst_a[:,:,0]=np.multiply(dst_a[:,:,0],dst_a[:,:,3]/255)
-    dst_a[:,:,1]=np.multiply(dst_a[:,:,1],dst_a[:,:,3]/255)
-    dst_a[:,:,2]=np.multiply(dst_a[:,:,2],dst_a[:,:,3]/255)
+    dst_a_m=np.zeros(dst_a.shape,dtype=np.uint8)
+    dst_a_m[:,:,0]=np.multiply(dst_a[:,:,0],dst_a[:,:,3]/255)
+    dst_a_m[:,:,1]=np.multiply(dst_a[:,:,1],dst_a[:,:,3]/255)
+    dst_a_m[:,:,2]=np.multiply(dst_a[:,:,2],dst_a[:,:,3]/255)
+    
+    
+    mask_c=mask_a+mask_b
+    mask_c[mask_c>255]=255
+    mask_c=np.asarray(mask_c,np.uint8)
+
+ 
+ 
+    
     #dst_b[0:ima.shape[0],0:ima.shape[1],:]=ima;
-    dst_b=dst_a+dst_b
+    dst_c=dst_a_m+dst_b
+    dst_c[:,:,3]=mask_c
 
     #dst2 = cv2.warpPerspective(imb,np.linalg.inv(M),(ima.shape[1] + imb.shape[1], ima.shape[0]+imb.shape[1]))
     #dst[0:ima.shape[0],0:ima.shape[1],:]=ima;
@@ -154,32 +210,34 @@ for it in range(1,len(files)-1):
     #cv2.imshow('dsta',dst_a)
 
     #cv2.imshow('dst2',dst2)
-    gray=cv2.cvtColor(dst_b,cv2.COLOR_BGRA2GRAY)
-    _,thresh = cv2.threshold(gray,1,255,cv2.THRESH_BINARY)
-
-
-    ima_masked=ima
-    contours,hierarchy = cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-    cnt = contours[0]
-    x,y,w,h = cv2.boundingRect(cnt)
-    crop=dst_b[y:y+h,x:x+w,:]
+    #crop=crop_blacks(dst_c)
+   
     #cv2.imshow('crop',crop)
-    cv2.imwrite('output2/'+files[it],crop)
+    if save:
+        if overlay:
+            cv2.imwrite('outputoverlay'+str(set)+'/'+files[it],dst_c)
+        else:
+            cv2.imwrite('output'+str(set)+'/'+files[it],dst_c)
+            if it==len(files)-1:
+                cv2.imwrite('overlay'+str(set)+'.jpg',dst_c)
     #cv2.imshow('dst_b',dst_b)
-    if files[it]=='frame_75063.jpg':
-        draw=True
+
  
 
     if draw:
-        cv2.imshow('ima',ima)
-        cv2.imshow('imb',imb)
+        #cv2.imshow('ima',ima)
+        #cv2.imshow('imb',imb)
         draw_points_a=cv2.drawKeypoints(ima,kp_a,None)
         draw_points_b=cv2.drawKeypoints(ima,kp_b,None)
         draw_matches = cv2.drawMatchesKnn(ima,kp_a,imb,kp_b,good,None,**draw_params)
         cv2.imshow('matches',draw_matches)
-        cv2.imshow('dstb',dst_b)
-        cv2.imshow('crop',crop)
-        cv2.waitKey()
+        #cv2.imshow('dstb',dst_b)
+        #cv2.imshow('dsta',dst_a)
+        cv2.imshow('dstc',dst_c)
+        #cv2.imshow('ima',ima)
+        #cv2.imshow('imb',imb)
+        #cv2.imshow('crop',crop)
+        cv2.waitKey(1)
 
 
     
@@ -190,7 +248,7 @@ for it in range(1,len(files)-1):
     #cv2.imshow('matches',draw_matches)
 
     
-    ima=crop
+    ima=dst_c
 
 
 

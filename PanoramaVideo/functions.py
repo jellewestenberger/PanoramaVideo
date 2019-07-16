@@ -1,7 +1,7 @@
 import cv2
  
 
-def extract_frames(videofile,startframe,endframe):
+def extract_frames(videofile,startframe,endframe,set):
     cap = cv2.VideoCapture(videofile)
     fps= cap.get(5)
     cap.set(1,startframe-1)
@@ -16,7 +16,7 @@ def extract_frames(videofile,startframe,endframe):
         
         frame=frame[bezel:height-bezel,:,:]
         cv2.imshow('frame',frame)
-        cv2.imwrite('frames2/frame_'+str(nr)+'.jpg',frame)
+        a=cv2.imwrite('frames'+str(set)+'/frame_'+str(nr)+'.jpg',frame)
         if nr==endframe:
             break
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -82,6 +82,12 @@ def play_frames_kp(videofile,startframe,endframe,threshold,scale):
     cv2.destroyAllWindows()
     return 
 
-import itertools
-import numpy as np
+def crop_blacks(dst_b):
+    gray=cv2.cvtColor(dst_b,cv2.COLOR_BGRA2GRAY)
+    _,thresh = cv2.threshold(gray,1,255,cv2.THRESH_BINARY)
 
+    contours,hierarchy = cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    cnt = contours[0]
+    x,y,w,h = cv2.boundingRect(cnt)
+    crop=dst_b[y:y+h,x:x+w,:]
+    return crop
